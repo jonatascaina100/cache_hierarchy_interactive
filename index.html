@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hierarquia de Memória e Cache</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #13161e;
+    --surface2: #1a1e29;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.14);
+
+    --green: #00e87a;
+    --green-dim: #00e87a22;
+    --red: #ff4466;
+    --red-dim: #ff446622;
+    --amber: #ffaa00;
+    --amber-dim: #ffaa0022;
+    --blue: #4d9fff;
+    --blue-dim: #4d9fff22;
+    --purple: #b89cff;
+    --purple-dim: #b89cff22;
+    --gray: #9aa0ad;
+    --gray-dim: #9aa0ad22;
+
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 2rem;
+    background-image:
+      radial-gradient(ellipse 60% 40% at 15% 0%, #4d9fff0a 0%, transparent 60%),
+      radial-gradient(ellipse 50% 40% at 85% 90%, #00e87a08 0%, transparent 60%);
+  }
+
+  .wrap { max-width: 900px; margin: 0 auto; }
+
+  h1 {
+    font-size: 13px;
+    font-family: var(--mono);
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h1::before {
+    content: '';
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--blue);
+    box-shadow: 0 0 8px var(--blue);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .4 } }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .tab {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    padding: 12px 22px; border-radius: 999px; border: 1px solid var(--border2);
+    background: var(--surface2); color: var(--muted); cursor: pointer;
+    transition: all .2s; letter-spacing: 0.02em;
+  }
+  .tab:hover { border-color: rgba(255,255,255,0.25); color: var(--text); }
+  .tab.active { background: var(--blue-dim); border-color: var(--blue); color: var(--blue); box-shadow: 0 0 18px var(--blue-dim); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 16px; }
+  .card-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 1rem; }
+  .card-note { font-size: 13px; color: var(--muted); margin-bottom: 1rem; line-height: 1.6; }
+
+  /* ===== HIERARCHY TAB ===== */
+  .hier-wrap { display: flex; flex-direction: column; gap: 10px; }
+  .hier-head {
+    display: grid; grid-template-columns: 110px 1fr 90px 90px 120px;
+    gap: 10px; align-items: center; padding: 0 2px 6px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .hier-head .h-center { text-align: center; }
+  .hier-row { display: grid; grid-template-columns: 110px 1fr 90px 90px 120px; gap: 10px; align-items: center; }
+  .hier-name { font-size: 13px; font-weight: 600; color: var(--text); text-align: right; }
+  .hier-bar-wrap { height: 32px; border-radius: 8px; overflow: hidden; background: var(--surface2); border: 1px solid var(--border); }
+  .hier-bar { height: 100%; border-radius: 8px; transition: width .4s; }
+  .hier-size { font-family: var(--mono); font-size: 12px; color: var(--text); text-align: center; }
+  .hier-lat { font-family: var(--mono); font-size: 12px; font-weight: 700; text-align: center; }
+  .hier-loc { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+  /* ===== SIM TAB ===== */
+  .access-grid { display: grid; grid-template-columns: repeat(16, 1fr); gap: 5px; margin-bottom: 1.25rem; }
+  .mem-cell {
+    height: 36px; border-radius: 7px;
+    background: var(--surface2); border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-family: var(--mono); color: var(--muted);
+    cursor: pointer; transition: all .2s; font-weight: 600;
+  }
+  .mem-cell:hover { border-color: var(--border2); transform: translateY(-1px); }
+  .mem-cell.in-l1 { background: #1a4f8a; border-color: #3f7fc9; color: var(--blue); }
+  .mem-cell.in-l2 { background: #135c4a; border-color: #1f8f72; color: var(--green); }
+  .mem-cell.in-l3 { background: #3b2f7a; border-color: #6e58c9; color: var(--purple); }
+  .mem-cell.accessed { background: var(--amber-dim); border-color: var(--amber); color: var(--amber); transform: scale(1.08); box-shadow: 0 0 16px var(--amber-dim); }
+
+  .access-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 1.25rem; }
+  .leg { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .leg-dot { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; border: 1.5px solid transparent; }
+  .leg-dot.accessed { background: var(--amber-dim); border-color: var(--amber); }
+  .leg-dot.l1 { background: #1a4f8a; border-color: #3f7fc9; }
+  .leg-dot.l2 { background: #135c4a; border-color: #1f8f72; }
+  .leg-dot.l3 { background: #3b2f7a; border-color: #6e58c9; }
+
+  .result-strip {
+    border-radius: 12px; padding: 14px 18px; font-size: 13px; line-height: 1.6;
+    margin-bottom: 1.25rem; transition: all .3s; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted);
+  }
+  .result-strip.l1  { background: var(--blue-dim);   border-color: var(--blue);   color: var(--blue); }
+  .result-strip.l2  { background: var(--green-dim);  border-color: var(--green);  color: var(--green); }
+  .result-strip.l3  { background: var(--purple-dim); border-color: var(--purple); color: var(--purple); }
+  .result-strip.ram { background: var(--red-dim);    border-color: var(--red);    color: var(--red); }
+
+  .access-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.25rem; }
+  .astat { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .astat-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .astat-val { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--text); }
+
+  /* ===== LATENCY TAB ===== */
+  .lat-bars { display: flex; flex-direction: column; gap: 10px; }
+  .lat-row { display: grid; grid-template-columns: 100px 1fr 130px; gap: 10px; align-items: center; }
+  .lat-name { font-size: 13px; font-weight: 600; color: var(--text); text-align: right; }
+  .lat-track { height: 28px; border-radius: 7px; background: var(--surface2); border: 1px solid var(--border); overflow: hidden; }
+  .lat-fill { height: 100%; border-radius: 7px; transition: width .5s; }
+  .lat-val { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text); }
+
+  /* generic */
+  button {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border2);
+    background: var(--surface2); color: var(--text); cursor: pointer;
+    letter-spacing: 0.04em; transition: all .15s;
+  }
+  button:hover { background: #222738; border-color: rgba(255,255,255,0.25); transform: translateY(-1px); }
+  button:active { transform: translateY(0) scale(0.98); }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Hierarquia de Memória e Cache</h1>
+
+  <div class="tabs">
+    <div class="tab active" id="t-hier" onclick="setTab('hier')">Hierarquia</div>
+    <div class="tab" id="t-sim" onclick="setTab('sim')">Simulador de acesso</div>
+    <div class="tab" id="t-lat" onclick="setTab('lat')">Latências comparadas</div>
+  </div>
+
+  <!-- ===================== TAB 1: HIERARQUIA ===================== -->
+  <div id="panel-hier">
+    <div class="card">
+      <div class="card-label">Tamanho e velocidade por nível</div>
+      <div class="hier-wrap">
+        <div class="hier-head">
+          <div></div>
+          <div>Tamanho relativo</div>
+          <div class="h-center">Tamanho</div>
+          <div class="h-center">Latência</div>
+          <div>Localização</div>
+        </div>
+        <div class="hier-row">
+          <div class="hier-name">Registradores</div>
+          <div class="hier-bar-wrap"><div class="hier-bar" style="width:2%;background:var(--purple);"></div></div>
+          <div class="hier-size">~1 KB</div>
+          <div class="hier-lat" style="color:var(--purple)">&lt;1 ns</div>
+          <div class="hier-loc">dentro da ULA</div>
+        </div>
+        <div class="hier-row">
+          <div class="hier-name">L1 Cache</div>
+          <div class="hier-bar-wrap"><div class="hier-bar" style="width:4%;background:var(--blue);"></div></div>
+          <div class="hier-size">32–64 KB</div>
+          <div class="hier-lat" style="color:var(--blue)">~1 ns</div>
+          <div class="hier-loc">por núcleo</div>
+        </div>
+        <div class="hier-row">
+          <div class="hier-name">L2 Cache</div>
+          <div class="hier-bar-wrap"><div class="hier-bar" style="width:10%;background:var(--green);"></div></div>
+          <div class="hier-size">256 KB – 1 MB</div>
+          <div class="hier-lat" style="color:var(--green)">~5 ns</div>
+          <div class="hier-loc">por núcleo</div>
+        </div>
+        <div class="hier-row">
+          <div class="hier-name">L3 Cache</div>
+          <div class="hier-bar-wrap"><div class="hier-bar" style="width:30%;background:var(--purple);"></div></div>
+          <div class="hier-size">8–64 MB</div>
+          <div class="hier-lat" style="color:var(--purple)">~20 ns</div>
+          <div class="hier-loc">compartilhado</div>
+        </div>
+        <div class="hier-row">
+          <div class="hier-name">RAM</div>
+          <div class="hier-bar-wrap"><div class="hier-bar" style="width:100%;background:var(--gray);"></div></div>
+          <div class="hier-size">8–64 GB</div>
+          <div class="hier-lat" style="color:var(--gray)">~100 ns</div>
+          <div class="hier-loc">fora do chip</div>
+        </div>
+        <div class="hier-row">
+          <div class="hier-name">SSD NVMe</div>
+          <div class="hier-bar-wrap"><div class="hier-bar" style="width:100%;background:var(--red);"></div></div>
+          <div class="hier-size">256 GB – 4 TB</div>
+          <div class="hier-lat" style="color:var(--red)">~100 µs</div>
+          <div class="hier-loc">fora do chip</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:0">
+      <div class="card-note" style="margin-bottom:0">
+        Cache é dividido em L1 (privado, ultrarrápido, pequeno), L2 (privado, equilíbrio) e L3 (compartilhado entre núcleos, grande). Quando o dado não está em nenhum cache — cache miss — o processador vai até a RAM, pagando ~100× mais tempo de espera.
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== TAB 2: SIMULADOR ===================== -->
+  <div id="panel-sim" style="display:none">
+    <div class="card">
+      <div class="card-label">Memória simulada (32 endereços)</div>
+      <div class="card-note">Clique em células de memória para simular acessos. O cache é preenchido automaticamente (política LRU simplificada).</div>
+      <div class="access-grid" id="access-grid"></div>
+      <div class="access-legend">
+        <div class="leg"><span class="leg-dot accessed"></span> Acessado agora</div>
+        <div class="leg"><span class="leg-dot l1"></span> Em L1</div>
+        <div class="leg"><span class="leg-dot l2"></span> Em L2</div>
+        <div class="leg"><span class="leg-dot l3"></span> Em L3</div>
+      </div>
+      <div class="result-strip" id="result-strip">Clique em uma célula para simular um acesso à memória.</div>
+      <div class="access-stats">
+        <div class="astat"><div class="astat-label">ACESSOS</div><div class="astat-val" id="as-total">0</div></div>
+        <div class="astat"><div class="astat-label">L1 HITS</div><div class="astat-val" id="as-l1" style="color:var(--blue)">0</div></div>
+        <div class="astat"><div class="astat-label">L2 HITS</div><div class="astat-val" id="as-l2" style="color:var(--green)">0</div></div>
+        <div class="astat"><div class="astat-label">RAM MISS</div><div class="astat-val" id="as-ram" style="color:var(--red)">0</div></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div class="btn-row">
+        <button onclick="resetSim()">Resetar cache</button>
+        <button onclick="seqAccess()">Acesso sequencial</button>
+        <button onclick="randAccess()">Acesso aleatório</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== TAB 3: LATÊNCIAS ===================== -->
+  <div id="panel-lat" style="display:none">
+    <div class="card">
+      <div class="card-label">Se 1 ciclo de CPU fosse 1 segundo</div>
+      <div class="lat-bars">
+        <div class="lat-row">
+          <div class="lat-name">Registrador</div>
+          <div class="lat-track"><div class="lat-fill" style="width:0.4%;background:var(--purple)"></div></div>
+          <div class="lat-val">&lt;1 ciclo</div>
+        </div>
+        <div class="lat-row">
+          <div class="lat-name">L1</div>
+          <div class="lat-track"><div class="lat-fill" style="width:1%;background:var(--blue)"></div></div>
+          <div class="lat-val">~4 ciclos</div>
+        </div>
+        <div class="lat-row">
+          <div class="lat-name">L2</div>
+          <div class="lat-track"><div class="lat-fill" style="width:4%;background:var(--green)"></div></div>
+          <div class="lat-val">~12 ciclos</div>
+        </div>
+        <div class="lat-row">
+          <div class="lat-name">L3</div>
+          <div class="lat-track"><div class="lat-fill" style="width:12%;background:var(--purple)"></div></div>
+          <div class="lat-val">~40 ciclos</div>
+        </div>
+        <div class="lat-row">
+          <div class="lat-name">RAM</div>
+          <div class="lat-track"><div class="lat-fill" style="width:55%;background:var(--gray)"></div></div>
+          <div class="lat-val">~200 ciclos</div>
+        </div>
+        <div class="lat-row">
+          <div class="lat-name">SSD NVMe</div>
+          <div class="lat-track"><div class="lat-fill" style="width:100%;background:var(--red)"></div></div>
+          <div class="lat-val">~300.000 ciclos</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-note" style="margin-bottom:0">
+        Analogia: se L1 = pegar a caneta na mesa (1 segundo), então RAM = ir ao supermercado (3 minutos) e SSD = ir a outro país (3 dias).
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:0">
+      <div class="card-note" style="margin-bottom:0">
+        O custo de um cache miss de RAM não é só a latência — o processador fica em stall aguardando os dados chegarem. Em código que percorre estruturas de dados grandes e espalhadas (listas ligadas, grafos, hash maps), esse stall domina o tempo de execução.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ===================== TABS ===================== */
+function setTab(t) {
+  ['hier','sim','lat'].forEach(k => {
+    document.getElementById('panel-'+k).style.display = k===t ? '' : 'none';
+    document.getElementById('t-'+k).className = 'tab' + (k===t ? ' active' : '');
+  });
+}
+
+/* ===================== SIMULATOR ===================== */
+const N_CELLS = 32;
+const L1_SIZE = 4, L2_SIZE = 8, L3_SIZE = 16;
+let l1 = [], l2 = [], l3 = [];
+let stats = { total:0, l1:0, l2:0, l3:0, ram:0 };
+let lastAccessed = -1;
+
+function buildGrid() {
+  const g = document.getElementById('access-grid');
+  g.innerHTML = '';
+  for (let i = 0; i < N_CELLS; i++) {
+    const d = document.createElement('div');
+    d.className = 'mem-cell';
+    d.id = 'mc-' + i;
+    d.textContent = '0x' + i.toString(16).toUpperCase().padStart(2,'0');
+    d.onclick = () => accessCell(i);
+    g.appendChild(d);
+  }
+}
+
+function updateGrid() {
+  for (let i = 0; i < N_CELLS; i++) {
+    const el = document.getElementById('mc-' + i);
+    if (!el) continue;
+    let cls = 'mem-cell';
+    if (i === lastAccessed) cls += ' accessed';
+    else if (l1.includes(i)) cls += ' in-l1';
+    else if (l2.includes(i)) cls += ' in-l2';
+    else if (l3.includes(i)) cls += ' in-l3';
+    el.className = cls;
+  }
+}
+
+function evict(arr, maxSize, val) {
+  if (arr.includes(val)) return;
+  arr.unshift(val);
+  if (arr.length > maxSize) arr.pop();
+}
+
+function accessCell(i) {
+  stats.total++;
+  lastAccessed = i;
+  const rs = document.getElementById('result-strip');
+  let msg, cls;
+  if (l1.includes(i)) {
+    stats.l1++; cls = 'l1';
+    msg = 'L1 HIT — dado encontrado em L1. Latência: ~4 ciclos. Custo mínimo.';
+    l1.splice(l1.indexOf(i), 1); l1.unshift(i);
+  } else if (l2.includes(i)) {
+    stats.l2++; cls = 'l2';
+    msg = 'L2 HIT — não estava em L1, mas estava em L2. Latência: ~12 ciclos. Dado promovido para L1.';
+    l2.splice(l2.indexOf(i), 1); evict(l1, L1_SIZE, i);
+  } else if (l3.includes(i)) {
+    stats.l3++; cls = 'l3';
+    msg = 'L3 HIT — não estava em L1/L2, mas estava em L3. Latência: ~40 ciclos. Promovido para L2 e L1.';
+    l3.splice(l3.indexOf(i), 1); evict(l2, L2_SIZE, i); evict(l1, L1_SIZE, i);
+  } else {
+    stats.ram++; cls = 'ram';
+    msg = 'CACHE MISS — dado não estava em nenhum cache. Busca na RAM: ~200 ciclos. Carregado em L1, L2 e L3.';
+    evict(l3, L3_SIZE, i); evict(l2, L2_SIZE, i); evict(l1, L1_SIZE, i);
+  }
+  rs.textContent = msg;
+  rs.className = 'result-strip ' + cls;
+  updateGrid();
+  document.getElementById('as-total').textContent = stats.total;
+  document.getElementById('as-l1').textContent = stats.l1;
+  document.getElementById('as-l2').textContent = stats.l2;
+  document.getElementById('as-ram').textContent = stats.ram;
+}
+
+function resetSim() {
+  l1 = []; l2 = []; l3 = []; stats = { total:0, l1:0, l2:0, l3:0, ram:0 }; lastAccessed = -1;
+  updateGrid();
+  const rs = document.getElementById('result-strip');
+  rs.textContent = 'Cache resetado. Clique em uma célula para simular um acesso.';
+  rs.className = 'result-strip';
+  ['as-total','as-l1','as-l2','as-ram'].forEach(id => document.getElementById(id).textContent = '0');
+}
+
+function seqAccess() {
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i >= 16) { clearInterval(iv); return; }
+    accessCell(i++);
+  }, 160);
+}
+
+function randAccess() {
+  let n = 0;
+  const iv = setInterval(() => {
+    if (n++ >= 16) { clearInterval(iv); return; }
+    accessCell(Math.floor(Math.random() * N_CELLS));
+  }, 160);
+}
+
+buildGrid();
+</script>
+</body>
+</html>
